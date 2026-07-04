@@ -13,6 +13,8 @@ Do not present this as Codex CLI provider integration. Do not change `C:\Users\1
 
 Run `scripts/signin.py` when cookies are missing, expired, or the user asks to log in/check JWT.
 
+`signin.py` also supports daily check-in for every account in `scripts/config.json`. Run without `--phone` or `--account` to process all configured accounts. After each check-in it saves a post-check-in screenshot, confirms the current day is signed in, and prints the current streak as `Consecutive sign-in days: X` when the IMYAI page exposes `已连续签到X天`.
+
 Network behavior is automatic. The scripts try the configured proxy first when `config.json` has `"proxy.enabled": true`, then direct connection, then environment proxies, then detected local Clash/Mihomo HTTP or mixed ports from common config files. If no proxy is configured or available, they stay direct. Set `IMYAI_NETWORK_DEBUG=1` before a command to print which route is being tried.
 
 Playwright login behavior: `signin.py` uses a direct browser connection by default. It uses a proxy only when `config.json` has `"proxy.enabled": true`; set `"proxy.auto_detect": true` only when the local Clash/Mihomo mixed port is known to work as an HTTP proxy. This avoids accidentally treating unrelated open localhost ports as browser proxies.
@@ -26,6 +28,7 @@ python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\signin.py" --p
 ```bash
 python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\signin.py" --phone YOUR_PHONE --password <PASSWORD> --login-only
 python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\signin.py" --phone YOUR_PHONE --password <PASSWORD> --model-count
+python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\signin.py" --retries 1
 ```
 
 Saved cookies live in the `cookie_dir` configured by `scripts/config.json`.
@@ -184,20 +187,21 @@ If an IMYAI-produced answer, code block, or artifact is wrong or incomplete:
 Verify in this order after edits:
 
 1. `signin.py --model-count` reports supported models.
-2. `imyai_chat.py --model "Qwen 3.6 flash" --prompt "Reply exactly: ok" --no-official-history --json` returns non-empty `text`; this catches expired chat JWTs better than model-count alone.
-3. `imyai_chat.py --list-models-compact` returns enabled model entries without requiring the user to choose internal ids.
-4. `imyai_chat.py --search-model claude` returns Claude model entries.
-5. `imyai_chat.py --model "Ava" --prompt "Reply exactly: ok" --json` returns non-empty `text`.
-6. `imyai_chat.py --model "Qwen 3.6 flash" --prompt "Reply exactly: ok" --json` returns non-empty `text`.
-7. `imyai_chat.py --model "Claude Sonnet 4.6" --prompt "Reply exactly: ok" --json` returns non-empty `text` when that model has sufficient credits.
-8. `imyai_chat.py --session auto --set-session-model "Qwen 3.6 flash" --json` saves a session model.
-9. Two `imyai_chat.py --session auto --prompt ... --json` calls preserve local context via `historyInjected=true` on the second call.
-10. Run at least one real Codex App coding simulation: IMYAI generates implementation code, Codex App writes independent acceptance tests, runs them, and re-asks IMYAI on failure.
-11. `imyai_image.py --list-models-compact` returns enabled drawing model entries.
-12. `imyai_image.py --model "GPT Image 2" --manifest` returns runtime inputs including `prompt` and `size`.
-13. `imyai_image.py --model "GPT Image 2" --poll-task-id <existing record id> --json` finds `/draw/mineList` rows and downloads final images without submitting a new task.
-14. For full image verification, submit one low-frequency 1K task, poll to SUCCESS, download the final image, and inspect the saved image file.
-15. `quick_validate.py` reports the skill is valid when available.
+2. `signin.py --retries 1` processes all configured accounts, returns `OK` for each signed-in account, saves `post-signin-*.png` screenshots, and logs `Consecutive sign-in days: X` when available.
+3. `imyai_chat.py --model "Qwen 3.6 flash" --prompt "Reply exactly: ok" --no-official-history --json` returns non-empty `text`; this catches expired chat JWTs better than model-count alone.
+4. `imyai_chat.py --list-models-compact` returns enabled model entries without requiring the user to choose internal ids.
+5. `imyai_chat.py --search-model claude` returns Claude model entries.
+6. `imyai_chat.py --model "Ava" --prompt "Reply exactly: ok" --json` returns non-empty `text`.
+7. `imyai_chat.py --model "Qwen 3.6 flash" --prompt "Reply exactly: ok" --json` returns non-empty `text`.
+8. `imyai_chat.py --model "Claude Sonnet 4.6" --prompt "Reply exactly: ok" --json` returns non-empty `text` when that model has sufficient credits.
+9. `imyai_chat.py --session auto --set-session-model "Qwen 3.6 flash" --json` saves a session model.
+10. Two `imyai_chat.py --session auto --prompt ... --json` calls preserve local context via `historyInjected=true` on the second call.
+11. Run at least one real Codex App coding simulation: IMYAI generates implementation code, Codex App writes independent acceptance tests, runs them, and re-asks IMYAI on failure.
+12. `imyai_image.py --list-models-compact` returns enabled drawing model entries.
+13. `imyai_image.py --model "GPT Image 2" --manifest` returns runtime inputs including `prompt` and `size`.
+14. `imyai_image.py --model "GPT Image 2" --poll-task-id <existing record id> --json` finds `/draw/mineList` rows and downloads final images without submitting a new task.
+15. For full image verification, submit one low-frequency 1K task, poll to SUCCESS, download the final image, and inspect the saved image file.
+16. `quick_validate.py` reports the skill is valid when available.
 
 ## Notes
 

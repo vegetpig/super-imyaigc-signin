@@ -1,4 +1,4 @@
-﻿---
+---
 name: 浣跨敤IMYAI
 description: "浣跨敤IMYAI. Let Codex App call IMYAI official chat and image models by human-readable model name while Codex App remains the orchestrator and tool executor. Use when the user says 浣跨敤IMYAI, asks Codex App to use an IMYAI model for later replies, names an IMYAI model such as Claude Opus/Sonnet, Qwen, Gemini, Ava, GPT Image, Nano Banana, or asks for IMYAI image generation, login, JWT verification, model discovery, session mode, or IMYAI-first repair."
 ---
@@ -112,8 +112,9 @@ Model selection:
 Point usage reporting:
 
 - Every final answer after IMYAI-assisted task work must include `鏅€氱Н鍒嗭細...` and `楂樼骇绉垎锛?..`.
+- 每次 IMYAI 参与任务后，运行 `python scripts/imyai_balance.py --phone <phone> --json` 获取真实余额并汇报：普通积分、高级积分、超级积分、绘图积分、Agent 积分。
 - If a reliable point balance/usage API is available, record balances before and after the IMYAI task and report the difference.
-- If the response payload or balance API does not expose point usage, report `鏅€氱Н鍒嗭細鏃犳硶缁熻` and/or `楂樼骇绉垎锛氭棤娉曠粺璁.
+- If `scripts/imyai_balance.py` cannot provide usable data and the response payload or balance API does not expose point usage, report `鏅€氱Н鍒嗭細鏃犳硶缁熻` and/or `楂樼骇绉垎锛氭棤娉曠粺璁.
 - Do not infer point usage from token counts, model names, or number of calls unless an official IMYAI API explicitly defines that conversion.
 - Pure Codex App work that did not call IMYAI does not need IMYAI point usage reporting.
 
@@ -206,6 +207,7 @@ Verify in this order after edits:
 15. `imyai_image.py --model "GPT Image 2" --poll-task-id <existing record id> --json` finds `/draw/mineList` rows and downloads final images without submitting a new task.
 16. For full image verification, submit one low-frequency 1K task, poll to SUCCESS, download the final image, and inspect the saved image file.
 17. `quick_validate.py` reports the skill is valid when available.
+18. `python scripts/imyai_balance.py --phone SECOND_PHONE --json` returns a `balance` object.
 
 ## Notes
 

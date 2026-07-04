@@ -435,6 +435,8 @@ class ImyaiClient:
         model_type_id: int,
         *,
         group_id: int | None = None,
+        enable_network: bool = False,
+        enable_workflow: bool = False,
         update_group_metadata: bool = True,
         group_name: str | None = None,
         history_retries: int = 3,
@@ -460,7 +462,13 @@ class ImyaiClient:
             except Exception as exc:
                 update_response = {"error": str(exc)}
 
-        text = self.complete(prompt, model_type_id, group_id=group_id)
+        text = self.complete(
+            prompt,
+            model_type_id,
+            group_id=group_id,
+            enable_network=enable_network,
+            enable_workflow=enable_workflow,
+        )
 
         history_response: dict[str, Any] | None = None
         history_entries: list[dict[str, Any]] = []
@@ -482,20 +490,49 @@ class ImyaiClient:
             "history_entries": history_entries,
         }
 
-    def chat_payload(self, prompt: str, model_type_id: int, group_id: int | None = None) -> dict[str, Any]:
+    def chat_payload(
+        self,
+        prompt: str,
+        model_type_id: int,
+        group_id: int | None = None,
+        *,
+        enable_network: bool = False,
+        enable_workflow: bool = False,
+    ) -> dict[str, Any]:
         options = self.base_config(model_type_id)
         if group_id is not None:
             options["groupId"] = group_id
-        return {
+        payload: dict[str, Any] = {
             "prompt": prompt,
             "appId": None,
             "options": options,
         }
+        if enable_network:
+            payload["enableNetworkMode"] = True
+        if enable_workflow:
+            payload["enableWorkflow"] = True
+        return payload
 
-    def chat_events(self, prompt: str, model_type_id: int, group_id: int | None = None) -> Iterable[dict[str, Any]]:
+    def chat_events(
+        self,
+        prompt: str,
+        model_type_id: int,
+        group_id: int | None = None,
+        *,
+        enable_network: bool = False,
+        enable_workflow: bool = False,
+    ) -> Iterable[dict[str, Any]]:
         last_error: urllib.error.HTTPError | None = None
         for attempt in range(2):
-            encrypted = encrypted_payload(self.chat_payload(prompt, model_type_id, group_id=group_id))
+            encrypted = encrypted_payload(
+                self.chat_payload(
+                    prompt,
+                    model_type_id,
+                    group_id=group_id,
+                    enable_network=enable_network,
+                    enable_workflow=enable_workflow,
+                )
+            )
             headers = self.headers(accept="text/event-stream, application/json, text/plain, */*")
             headers["Content-Type"] = "application/json"
             req = urllib.request.Request(
@@ -520,9 +557,23 @@ class ImyaiClient:
             raise RuntimeError(f"Chat request failed ({last_error.code})") from last_error
         raise RuntimeError("Chat request failed")
 
-    def complete(self, prompt: str, model_type_id: int, group_id: int | None = None) -> str:
+    def complete(
+        self,
+        prompt: str,
+        model_type_id: int,
+        group_id: int | None = None,
+        *,
+        enable_network: bool = False,
+        enable_workflow: bool = False,
+    ) -> str:
         text = ""
-        for event in self.chat_events(prompt, model_type_id, group_id=group_id):
+        for event in self.chat_events(
+            prompt,
+            model_type_id,
+            group_id=group_id,
+            enable_network=enable_network,
+            enable_workflow=enable_workflow,
+        ):
             event_type = str(event.get("type") or "").lower()
             if event_type == "error" or event.get("error_code"):
                 raise RuntimeError(str(event.get("message") or event.get("error_code") or "IMYAI model returned an error"))
@@ -841,10 +892,24 @@ class ImyaiProxyHandler(BaseHTTPRequestHandler):
             return
         model_type_id = self.state.client.resolve_model_type_id(model)
         group_id = self.extract_requested_group_id(body)
+        enable_network, enable_workflow = self.extract_flags(body)
         if body.get("stream") is True:
-            self.stream_responses(model, prompt, model_type_id, group_id=group_id)
+            self.stream_responses(
+                model,
+                prompt,
+                model_type_id,
+                group_id=group_id,
+                enable_network=enable_network,
+                enable_workflow=enable_workflow,
+            )
             return
-        text = self.state.client.complete(prompt, model_type_id, group_id=group_id)
+        text = self.state.client.complete(
+            prompt,
+            model_type_id,
+            group_id=group_id,
+            enable_network=enable_network,
+            enable_workflow=enable_workflow,
+        )
         self.send_json(make_response(model, text))
 
     def handle_chat_completions(self, body: dict[str, Any]) -> None:
@@ -855,10 +920,24 @@ class ImyaiProxyHandler(BaseHTTPRequestHandler):
             return
         model_type_id = self.state.client.resolve_model_type_id(model)
         group_id = self.extract_requested_group_id(body)
+        enable_network, enable_workflow = self.extract_flags(body)
         if body.get("stream") is True:
-            self.stream_chat_completions(model, prompt, model_type_id, group_id=group_id)
+            self.stream_chat_completions(
+                model,
+                prompt,
+                model_type_id,
+                group_id=group_id,
+                enable_network=enable_network,
+                enable_workflow=enable_workflow,
+            )
             return
-        text = self.state.client.complete(prompt, model_type_id, group_id=group_id)
+        text = self.state.client.complete(
+            prompt,
+            model_type_id,
+            group_id=group_id,
+            enable_network=enable_network,
+            enable_workflow=enable_workflow,
+        )
         self.send_json(
             {
                 "id": response_id("chatcmpl"),
@@ -895,6 +974,36 @@ class ImyaiProxyHandler(BaseHTTPRequestHandler):
                         pass
         return None
 
+    @staticmethod
+    def extract_flags(body: dict[str, Any]) -> tuple[bool, bool]:
+        enable_network = False
+        enable_workflow = False
+
+        extra_body = body.get("extra_body")
+        if isinstance(extra_body, dict):
+            enable_network = enable_network or extra_body.get("enable_network") is True
+            enable_workflow = enable_workflow or extra_body.get("enable_workflow") is True
+
+        metadata = body.get("metadata")
+        if isinstance(metadata, dict):
+            enable_network = enable_network or metadata.get("enableNetworkMode") is True
+            enable_workflow = enable_workflow or metadata.get("enableWorkflow") is True
+
+        imyai = body.get("imyai")
+        if isinstance(imyai, dict):
+            enable_network = enable_network or imyai.get("enable_network") is True
+            enable_workflow = enable_workflow or imyai.get("enable_workflow") is True
+
+        tools = body.get("tools")
+        if isinstance(tools, list):
+            enable_network = enable_network or any(
+                isinstance(tool, dict) and tool.get("type") == "web_search"
+                for tool in tools
+            )
+
+        enable_network = enable_network or body.get("web_search") is True
+        return enable_network, enable_workflow
+
     def send_sse_headers(self) -> None:
         self.send_response(HTTPStatus.OK)
         self.send_cors_headers()
@@ -909,7 +1018,16 @@ class ImyaiProxyHandler(BaseHTTPRequestHandler):
         self.wfile.write(f"data: {payload}\n\n".encode("utf-8"))
         self.wfile.flush()
 
-    def stream_responses(self, model: str, prompt: str, model_type_id: int, group_id: int | None = None) -> None:
+    def stream_responses(
+        self,
+        model: str,
+        prompt: str,
+        model_type_id: int,
+        group_id: int | None = None,
+        *,
+        enable_network: bool = False,
+        enable_workflow: bool = False,
+    ) -> None:
         resp_id = response_id("resp")
         output_item_id = response_id("msg")
         content_index = 0
@@ -956,7 +1074,13 @@ class ImyaiProxyHandler(BaseHTTPRequestHandler):
             },
         )
         try:
-            for event in self.state.client.chat_events(prompt, model_type_id, group_id=group_id):
+            for event in self.state.client.chat_events(
+                prompt,
+                model_type_id,
+                group_id=group_id,
+                enable_network=enable_network,
+                enable_workflow=enable_workflow,
+            ):
                 delta, replacement = extract_text_from_imyai_event(event, full_text)
                 if replacement is not None:
                     delta = replacement[len(full_text) :] if replacement.startswith(full_text) else replacement
@@ -1024,12 +1148,27 @@ class ImyaiProxyHandler(BaseHTTPRequestHandler):
         self.write_sse("response.completed", {"type": "response.completed", "response": final_response})
         self.write_sse("done", "[DONE]")
 
-    def stream_chat_completions(self, model: str, prompt: str, model_type_id: int, group_id: int | None = None) -> None:
+    def stream_chat_completions(
+        self,
+        model: str,
+        prompt: str,
+        model_type_id: int,
+        group_id: int | None = None,
+        *,
+        enable_network: bool = False,
+        enable_workflow: bool = False,
+    ) -> None:
         completion_id = response_id("chatcmpl")
         full_text = ""
         self.send_sse_headers()
         try:
-            for event in self.state.client.chat_events(prompt, model_type_id, group_id=group_id):
+            for event in self.state.client.chat_events(
+                prompt,
+                model_type_id,
+                group_id=group_id,
+                enable_network=enable_network,
+                enable_workflow=enable_workflow,
+            ):
                 delta, replacement = extract_text_from_imyai_event(event, full_text)
                 if replacement is not None:
                     delta = replacement[len(full_text) :] if replacement.startswith(full_text) else replacement

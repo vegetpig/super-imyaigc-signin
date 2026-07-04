@@ -7,6 +7,33 @@
 ![Repo](https://img.shields.io/badge/GitHub-Private-111111)
 ![Codex Skill](https://img.shields.io/badge/Codex-Skill-10a37f)
 
+## 快速安装
+
+推荐新电脑使用 GitHub CLI：
+
+```powershell
+gh auth login
+mkdir $env:USERPROFILE\.codex\skills -Force
+cd $env:USERPROFILE\.codex\skills
+gh repo clone vegetpig/super-imyaigc-signin
+cd super-imyaigc-signin
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+需要安装后立刻验证登录和模型列表：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Verify
+```
+
+也可以从 GitHub Releases 下载压缩包，解压后运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+更多安装细节见 `INSTALL.md`。
+
 ## 功能总览
 
 | 能力 | 入口脚本 | 用途 |
@@ -62,8 +89,11 @@ sequenceDiagram
 ```text
 .
 ├── README.md
+├── INSTALL.md
+├── CHANGELOG.md
 ├── SKILL.md
 ├── CONTRIBUTING.md
+├── install.ps1
 ├── requirements.txt
 ├── agents/
 │   └── openai.yaml

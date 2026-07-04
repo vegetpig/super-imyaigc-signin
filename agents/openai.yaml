@@ -1,0 +1,4 @@
+interface:
+  display_name: "使用IMYAI"
+  short_description: "Codex App calls IMYAI chat/image models by model name while Codex App handles tools, files, execution, and tests"
+  default_prompt: "使用IMYAI: Codex App should call the selected IMYAI official chat or image model by human-readable model name. Keep Codex App as the orchestrator and tool executor; use --session auto for ongoing IMYAI-first replies."

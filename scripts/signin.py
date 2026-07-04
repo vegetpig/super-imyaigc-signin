@@ -241,6 +241,69 @@ def record_history(history_file: str, phone: str, username: str, success: bool, 
         f.write(f"{ts} | {phone} | {username} | {status} | {screenshot}\n")
 
 
+def signin_state_path(paths: dict) -> str:
+    configured = paths.get("signin_state_file") if isinstance(paths, dict) else ""
+    if configured:
+        return configured
+    return os.path.join(paths["cookie_dir"], "signin-state.json")
+
+
+def load_signin_state(paths: dict) -> dict:
+    path = signin_state_path(paths)
+    if not os.path.exists(path):
+        return {"accounts": {}}
+    try:
+        with open(path, "r", encoding="utf-8-sig") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {"accounts": {}}
+    except Exception:
+        return {"accounts": {}}
+
+
+def save_signin_state(paths: dict, state: dict):
+    path = signin_state_path(paths)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp_path = path + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(state, f, ensure_ascii=False, indent=2)
+    os.replace(tmp_path, path)
+
+
+def today_key() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+def update_signin_state(
+    paths: dict,
+    *,
+    phone: str,
+    username: str,
+    success: bool,
+    screenshot: str,
+    streak_days: int | None,
+):
+    state = load_signin_state(paths)
+    accounts = state.setdefault("accounts", {})
+    accounts[phone] = {
+        "date": today_key(),
+        "success": bool(success),
+        "username": username,
+        "screenshot": screenshot,
+        "streakDays": streak_days,
+        "updatedAt": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    save_signin_state(paths, state)
+
+
+def cached_success_for_today(state: dict, phone: str) -> dict | None:
+    account_state = (state.get("accounts") or {}).get(phone)
+    if not isinstance(account_state, dict):
+        return None
+    if account_state.get("date") != today_key() or account_state.get("success") is not True:
+        return None
+    return account_state
+
+
 def show_history(history_file: str, logger):
     if not os.path.exists(history_file):
         logger.info("No history found.")
@@ -734,6 +797,7 @@ async def process_account(browser, account, config, logger, login_only=False):
             screenshot_path = post_screenshot_path
 
         success = False
+        streak_days = None
         try:
             # Check for the signed-in icon element
             signed_icon = page.locator('img.sign-in-signed-icon[alt="已签到"]')
@@ -777,6 +841,14 @@ async def process_account(browser, account, config, logger, login_only=False):
             logger.warning(f"    Consecutive sign-in days check failed: {e}")
 
         record_history(paths["history_file"], phone, username, success, screenshot_path)
+        update_signin_state(
+            paths,
+            phone=phone,
+            username=username,
+            success=success,
+            screenshot=screenshot_path,
+            streak_days=streak_days,
+        )
         return success
 
     except Exception as e:
@@ -787,6 +859,14 @@ async def process_account(browser, account, config, logger, login_only=False):
         except:
             pass
         record_history(paths["history_file"], phone, phone[-4:], False, "")
+        update_signin_state(
+            paths,
+            phone=phone,
+            username=phone[-4:],
+            success=False,
+            screenshot="",
+            streak_days=None,
+        )
         return False
     finally:
         await page.close()
@@ -807,6 +887,7 @@ def parse_args():
     parser.add_argument("--no-cleanup", action="store_true", help="Skip deleting old screenshots")
     parser.add_argument("--login-only", action="store_true", help="Stop after successful login and skip check-in")
     parser.add_argument("--model-count", action="store_true", help="Print supported chat model counts after login")
+    parser.add_argument("--skip-success-today", action="store_true", help="Skip accounts already signed in today")
     parser.add_argument("--retries", "-r", type=int, default=3, help="Number of retries for failed sign-ins (default: 3)")
     return parser.parse_args()
 
@@ -870,6 +951,43 @@ async def main():
             logger.error(f"No password for {acc['phone']}. Use --set-password")
             return
 
+    skipped_results = []
+    if args.skip_success_today and not args.login_only and not args.model_count:
+        state = load_signin_state(paths)
+        pending_accounts = []
+        for account in accounts:
+            cached = cached_success_for_today(state, account["phone"])
+            if cached:
+                logger.info(f"--- Account: {account['phone']} ---")
+                logger.info("    Skipped: already signed in today")
+                streak_days = cached.get("streakDays")
+                if streak_days is not None:
+                    logger.info(f"    Consecutive sign-in days: {streak_days}")
+                screenshot = cached.get("screenshot")
+                if screenshot:
+                    logger.info(f"    Screenshot: {screenshot}")
+                skipped_results.append(
+                    {
+                        "account": account["phone"],
+                        "success": True,
+                        "skipped": True,
+                        "streakDays": streak_days,
+                    }
+                )
+            else:
+                pending_accounts.append(account)
+        accounts = pending_accounts
+
+    if args.skip_success_today and not accounts and not args.model_count:
+        logger.info("")
+        logger.info("=== RESULTS ===")
+        for r in skipped_results:
+            suffix = " SKIPPED"
+            streak = r.get("streakDays")
+            streak_text = f" streakDays={streak}" if streak is not None else ""
+            logger.info(f"  {r['account']}: OK{suffix}{streak_text}")
+        return
+
     settings = config["settings"]
     headless = args.headless if args.headless is not None else settings.get("headless", True)
     proxy = select_playwright_proxy(config)
@@ -910,7 +1028,7 @@ async def main():
         max_retries = args.retries if hasattr(args, "retries") else 3
         retry_delay = 3  # seconds between retries
         
-        results = []
+        results = list(skipped_results)
         for account in accounts:
             success = False
             for attempt in range(max_retries):
@@ -920,13 +1038,24 @@ async def main():
                 if attempt < max_retries - 1:
                     logger.warning(f"    Retry {attempt + 1}/{max_retries} failed, waiting {retry_delay}s before next attempt...")
                     await asyncio.sleep(retry_delay)
-            results.append({"account": account["phone"], "success": success})
+            cached = (load_signin_state(paths).get("accounts") or {}).get(account["phone"], {})
+            results.append(
+                {
+                    "account": account["phone"],
+                    "success": success,
+                    "skipped": False,
+                    "streakDays": cached.get("streakDays"),
+                }
+            )
         await browser.close()
 
         logger.info("")
         logger.info("=== RESULTS ===")
         for r in results:
-            logger.info(f"  {r['account']}: {'OK' if r['success'] else 'FAIL'}")
+            suffix = " SKIPPED" if r.get("skipped") else ""
+            streak = r.get("streakDays")
+            streak_text = f" streakDays={streak}" if streak is not None else ""
+            logger.info(f"  {r['account']}: {'OK' if r['success'] else 'FAIL'}{suffix}{streak_text}")
 
 
 if __name__ == "__main__":

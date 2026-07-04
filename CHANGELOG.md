@@ -1,5 +1,16 @@
 # 更新日志
 
+## v0.1.5 - 2026-07-04
+
+### 新增
+
+- 新增 `--skip-success-today`，当天已成功账号会直接输出 `OK SKIPPED streakDays=X`，不再重复打开浏览器签到。
+- 签到成功状态写入本地 `signin-state.json`，用于同一天后续自动化运行跳过。
+
+### 自动化
+
+- Codex App 自动化任务已改为运行 `python .\scripts\signin.py --retries 1 --no-cleanup --skip-success-today`。
+
 ## v0.1.4 - 2026-07-04
 
 ### 文档

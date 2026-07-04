@@ -167,6 +167,14 @@ python ".\scripts\signin.py" --phone THIRD_PHONE --retries 1
 python ".\scripts\signin.py" --retries 1
 ```
 
+自动化推荐使用幂等跳过模式：
+
+```powershell
+python ".\scripts\signin.py" --retries 1 --no-cleanup --skip-success-today
+```
+
+这个模式会把当天成功状态写入本地状态文件。后续同一天再次运行时，已成功账号会直接输出 `OK SKIPPED streakDays=X`，不会重复打开浏览器签到；当天未成功的账号仍会继续补签。
+
 更新或新增账号密码：
 
 ```powershell

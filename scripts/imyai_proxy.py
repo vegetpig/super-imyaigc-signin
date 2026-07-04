@@ -6,13 +6,17 @@ from __future__ import annotations
 import argparse
 import base64
 import codecs
+import concurrent.futures
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 import urllib.error
@@ -848,6 +852,8 @@ class ImyaiProxyHandler(BaseHTTPRequestHandler):
                 self.handle_responses(body)
             elif path in {"/v1/chat/completions", "/chat/completions"}:
                 self.handle_chat_completions(body)
+            elif path in {"/v1/images/generations", "/images/generations"}:
+                self.handle_images_generations(body)
             else:
                 self.send_error_json(HTTPStatus.NOT_FOUND, f"Unknown endpoint: {path}")
         except Exception as exc:
@@ -883,6 +889,123 @@ class ImyaiProxyHandler(BaseHTTPRequestHandler):
 
     def send_error_json(self, status: HTTPStatus, message: str) -> None:
         self.send_json({"error": {"message": message, "type": "imyai_proxy_error"}}, status=status)
+
+    def handle_images_generations(self, body: dict[str, Any]) -> None:
+        from imyai_image import (
+            auto_select_draw_version,
+            build_draw_payload,
+            download_url,
+            guarded_prompt,
+            image_urls,
+            max_parallel_count_for_model,
+            output_dir,
+            poll_images,
+            resolve_draw_version,
+            response_task_ids,
+        )
+
+        prompt = str(body.get("prompt") or "").strip()
+        if not prompt:
+            self.send_error_json(HTTPStatus.BAD_REQUEST, "No prompt provided")
+            return
+
+        response_format = str(body.get("response_format") or "url")
+        if response_format not in {"url", "b64_json"}:
+            self.send_error_json(HTTPStatus.BAD_REQUEST, "response_format must be 'url' or 'b64_json'")
+            return
+
+        try:
+            n = int(body.get("n") or 1)
+        except (TypeError, ValueError):
+            self.send_error_json(HTTPStatus.BAD_REQUEST, "n must be an integer")
+            return
+
+        try:
+            resolution, ratio = self.parse_openai_size(str(body.get("size") or "1024x1024"))
+            model = body.get("model")
+            model_name = str(model or "auto").strip()
+            client = self.state.client
+            if model_name.lower() == "auto":
+                selected, _ = auto_select_draw_version(client, prompt, [])
+            else:
+                selected = resolve_draw_version(client, model_name)
+            version_id = int(selected["versionId"])
+            manifest = client.draw_manifest(version_id)
+            guarded = guarded_prompt(prompt, enabled=True)
+            payload = build_draw_payload(
+                manifest,
+                guarded,
+                resolution=resolution,
+                ratio=ratio,
+                reference_images=[],
+                overrides=None,
+            )
+            submit_count = min(max(1, n), max_parallel_count_for_model(selected), 2)
+            submitted_at = time.time()
+
+            def invoke_once(_: int) -> dict[str, Any]:
+                worker_client = ImyaiClient(
+                    client.config_path,
+                    phone=client.phone,
+                    timeout=client.timeout,
+                )
+                return worker_client.invoke_draw(version_id, payload)
+
+            if submit_count == 1:
+                response = client.invoke_draw(version_id, payload)
+                responses = [response]
+            else:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=submit_count) as executor:
+                    responses = list(executor.map(invoke_once, range(submit_count)))
+
+            task_ids: list[str] = []
+            for item in responses:
+                task_ids.extend(response_task_ids(item))
+            task_ids = list(dict.fromkeys(task_ids))
+
+            rows, _ = poll_images(
+                client,
+                task_ids,
+                timeout=180,
+                interval=2.0,
+                submitted_after=submitted_at,
+                prompt=prompt,
+            )
+            urls: list[str] = []
+            for row in rows:
+                urls.extend(image_urls(row))
+            urls = list(dict.fromkeys(urls))
+            if not urls:
+                self.send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, "Image generation returned no URLs")
+                return
+
+            data: list[dict[str, str]] = []
+            if response_format == "url":
+                data = [{"url": url} for url in urls]
+            else:
+                temp_dir = Path(tempfile.mkdtemp(prefix="imyai-openai-image-"))
+                try:
+                    out_dir = output_dir(str(temp_dir))
+                    for index, url in enumerate(urls, start=1):
+                        path = download_url(
+                            url,
+                            out_dir,
+                            "openai-image",
+                            index,
+                            timeout=client.timeout,
+                            network_config=client.config,
+                        )
+                        data.append({"b64_json": base64.b64encode(path.read_bytes()).decode("ascii")})
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+
+            self.send_json({"created": int(time.time()), "data": data})
+        except TimeoutError as exc:
+            self.send_error_json(HTTPStatus.GATEWAY_TIMEOUT, str(exc) or "Image generation timed out")
+        except urllib.error.URLError as exc:
+            self.send_error_json(HTTPStatus.GATEWAY_TIMEOUT, str(exc) or "Image generation timed out")
+        except Exception as exc:
+            self.send_error_json(HTTPStatus.INTERNAL_SERVER_ERROR, str(exc))
 
     def handle_responses(self, body: dict[str, Any]) -> None:
         model = str(body.get("model") or DEFAULT_MODEL_ID)
@@ -1003,6 +1126,45 @@ class ImyaiProxyHandler(BaseHTTPRequestHandler):
 
         enable_network = enable_network or body.get("web_search") is True
         return enable_network, enable_workflow
+
+    @staticmethod
+    def parse_openai_size(size: str) -> tuple[str, str]:
+        match = re.match(r"^\s*(\d+)\s*x\s*(\d+)\s*$", str(size or ""), re.IGNORECASE)
+        if not match:
+            return "1K", "1:1"
+        width = int(match.group(1))
+        height = int(match.group(2))
+
+        resolution = "1K"
+        if width == 4096 or height == 4096:
+            resolution = "4K"
+        elif width == 2048 or height == 2048:
+            resolution = "2K"
+        elif width == 1024 or height == 1024:
+            resolution = "1K"
+
+        common_ratios = {
+            "1:1": (1, 1),
+            "2:3": (2, 3),
+            "3:2": (3, 2),
+            "9:16": (9, 16),
+            "16:9": (16, 9),
+            "3:4": (3, 4),
+            "4:3": (4, 3),
+        }
+        if width <= 0 or height <= 0:
+            return resolution, "1:1"
+        divisor = math.gcd(width, height)
+        simplified = f"{width // divisor}:{height // divisor}"
+        if simplified in common_ratios:
+            return resolution, simplified
+
+        aspect = width / height
+        ratio = min(
+            common_ratios,
+            key=lambda item: abs(aspect - (common_ratios[item][0] / common_ratios[item][1])),
+        )
+        return resolution, ratio
 
     def send_sse_headers(self) -> None:
         self.send_response(HTTPStatus.OK)

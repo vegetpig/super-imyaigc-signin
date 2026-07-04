@@ -1,4 +1,4 @@
----
+﻿---
 name: 浣跨敤IMYAI
 description: "浣跨敤IMYAI. Let Codex App call IMYAI official chat and image models by human-readable model name while Codex App remains the orchestrator and tool executor. Use when the user says 浣跨敤IMYAI, asks Codex App to use an IMYAI model for later replies, names an IMYAI model such as Claude Opus/Sonnet, Qwen, Gemini, Ava, GPT Image, Nano Banana, or asks for IMYAI image generation, login, JWT verification, model discovery, session mode, or IMYAI-first repair."
 ---
@@ -45,6 +45,25 @@ Run `scripts/imyai_chat.py` when the user wants Codex App to get output from an 
 When the user explicitly asks an IMYAI model to help complete a task, do not use `--no-official-history` by default. Use the official group/history path so the IMYAI model requests and replies are visible in the IMYAI website conversation. This includes later repair prompts, adjustment prompts, design revisions, and code-generation follow-ups for the same task.
 
 Use `--no-official-history` only when the message is not meant for IMYAI task work, for example: pure Codex App coordination with the user, local file inspection, command execution, screenshot/render checks, syntax/test runs, status explanations, or when the user explicitly says not to record/send the IMYAI content. Codex App tool activity itself never goes to IMYAI unless Codex App deliberately summarizes it and sends that summary as an IMYAI prompt.
+
+## IMYAI-Agent 全能模型 (可选, 默认不用)
+
+IMYAI 有一个服务端 Agent 模型 (modelTypeId=228, IMYAI-Agent-全能模型), 自动联网 + 绘图 + 多步编排. 消耗独立的 agentCount 积分, 不动普通/高级/绘图池.
+
+只在以下场景才用:
+
+- 用户明确说 "用 Agent" / "使用全能模型" / "跑一个复杂多步任务"
+- 单次问答用普通/高级模型明显不够, 需要模型自己规划+搜索+画图
+
+默认不启用. 普通问答一律走 `imyai_chat.py`, 不要因为看着复杂就切 agent.
+
+命令:
+
+```bash
+python scripts/imyai_agent.py --phone <phone> --task "任务描述" --json
+```
+
+余额报告需额外加 Agent 积分.
 
 ## IMYAI session mode in Codex App
 
@@ -208,6 +227,7 @@ Verify in this order after edits:
 16. For full image verification, submit one low-frequency 1K task, poll to SUCCESS, download the final image, and inspect the saved image file.
 17. `quick_validate.py` reports the skill is valid when available.
 18. `python scripts/imyai_balance.py --phone SECOND_PHONE --json` returns a `balance` object.
+19. `python scripts/imyai_agent.py --phone SECOND_PHONE --task "回复恰好 ok" --json` returns a `text` field (会烧 agent 积分, 可选).
 
 ## Notes
 
@@ -218,4 +238,3 @@ Verify in this order after edits:
 - If a request fails with 401, refresh cookies with `signin.py --login-only`.
 - Keep Codex App as the orchestrator; IMYAI model output is an input artifact for Codex App to process, execute, verify, or return.
 - Official `groupId` records IMYAI chat history, but local session history is what makes follow-up prompts reliably conversational in Codex App.
-

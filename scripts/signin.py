@@ -490,6 +490,80 @@ async def do_checkin(page, logger):
     await asyncio.sleep(random.uniform(1.0, 2.0))
 
 
+async def do_checkin_v2(page, logger):
+    await dismiss_blocking_overlays(page, logger)
+    opened = await open_checkin_from_avatar_menu(page, logger)
+    if not opened:
+        opened = await open_checkin_from_reward_button(page, logger)
+    if not opened:
+        raise RuntimeError("Unable to open check-in calendar")
+
+    await asyncio.sleep(random.uniform(1.5, 2.5))
+    try:
+        signin_btn = page.locator('button:has-text("今日尚未签到"), button:has-text("今日未签到")').first
+        if await signin_btn.count() > 0:
+            await human_move_and_click(page, signin_btn, logger)
+            logger.info("    Clicked today sign-in button")
+            await asyncio.sleep(random.uniform(1.5, 2.5))
+        else:
+            logger.warning("    Today sign-in button not found, may already be signed in")
+    except Exception as e:
+        logger.warning(f"    Failed to click today sign-in button: {e}")
+    await asyncio.sleep(random.uniform(1.0, 2.0))
+
+
+async def checkin_modal_visible(page) -> bool:
+    for selector in (
+        'text=签到奖励',
+        'button:has-text("今日已成功签到")',
+        'button:has-text("今日尚未签到")',
+        'button:has-text("今日未签到")',
+    ):
+        try:
+            if await page.locator(selector).first.is_visible(timeout=800):
+                return True
+        except Exception:
+            pass
+    return False
+
+
+async def open_checkin_from_avatar_menu(page, logger) -> bool:
+    try:
+        avatar = page.locator('.avatar-container').first
+        random_delay(0.5, 1.0)
+        await human_move_and_click(page, avatar, logger)
+        random_delay(1.0, 2.0)
+        btn = page.locator('span:has-text("签到领积分")').first
+        await btn.wait_for(state="visible", timeout=5000)
+        await human_move_and_click(page, btn, logger)
+        logger.info("    Clicked check-in button from avatar menu")
+        return await checkin_modal_visible(page)
+    except Exception as e:
+        logger.warning(f"    Avatar menu check-in path failed: {e}")
+        try:
+            await page.keyboard.press("Escape")
+        except Exception:
+            pass
+        return False
+
+
+async def open_checkin_from_reward_button(page, logger) -> bool:
+    await dismiss_blocking_overlays(page, logger)
+    buttons = page.locator('button.p-2.text-gray-500')
+    for index in (1, 0):
+        try:
+            button = buttons.nth(index)
+            if await button.is_visible(timeout=2000):
+                await human_move_and_click(page, button, logger)
+                logger.info(f"    Clicked check-in button from top icon entry index={index}")
+                await asyncio.sleep(random.uniform(1.0, 2.0))
+                if await checkin_modal_visible(page):
+                    return True
+        except Exception as e:
+            logger.warning(f"    Top icon check-in path failed for index={index}: {e}")
+    return False
+
+
 async def dismiss_blocking_overlays(page, logger):
     """Advance or close product tours that block clicks on the page."""
     for _ in range(8):
@@ -498,6 +572,8 @@ async def dismiss_blocking_overlays(page, logger):
             'button:has-text("Skip")',
             'button:has-text("Done")',
             'button:has-text("Next")',
+            'button:has-text("一周不再提示")',
+            'button:has-text("知道了")',
             'button:has-text("跳过")',
             'button:has-text("完成")',
             'button:has-text("下一步")',
@@ -635,7 +711,7 @@ async def process_account(browser, account, config, logger, login_only=False):
             return True
 
         try:
-            await safe_call(do_checkin, page, logger, retries=settings["max_retries"], delay=settings["retry_delay"])
+            await safe_call(do_checkin_v2, page, logger, retries=settings["max_retries"], delay=settings["retry_delay"])
         except Exception as e:
             logger.warning(f"    Check-in failed: {e}")
 

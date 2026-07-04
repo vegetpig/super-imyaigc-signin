@@ -149,6 +149,36 @@ python ".\scripts\signin.py" --phone YOUR_PHONE --no-headless --login-only
 python ".\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Qwen 3.6 flash" --prompt "Reply exactly: ok" --no-official-history --json
 ```
 
+## 多账号签到
+
+`scripts/config.json` 的 `accounts` 数组支持多个账号。当前已配置 3 个账号，密码通过 `scripts/.secret_key` 加密保存。
+
+只签到单个账号：
+
+```powershell
+python ".\scripts\signin.py" --phone YOUR_PHONE --retries 1
+python ".\scripts\signin.py" --phone SECOND_PHONE --retries 1
+python ".\scripts\signin.py" --phone THIRD_PHONE --retries 1
+```
+
+签到全部账号：
+
+```powershell
+python ".\scripts\signin.py" --retries 1
+```
+
+更新或新增账号密码：
+
+```powershell
+python ".\scripts\signin.py" --set-password SECOND_PHONE "<密码>"
+python ".\scripts\signin.py" --set-password THIRD_PHONE "<密码>"
+```
+
+签到脚本会为每个账号保存两张截图：
+
+- `pre-signin-*.png`：签到前页面。
+- `post-signin-*.png`：签到后页面或结果弹窗。
+
 ## 聊天模型
 
 列出可用聊天模型：

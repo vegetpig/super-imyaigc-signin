@@ -14,7 +14,7 @@ import random
 import re
 import sys
 import time
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from imyai_network import auto_proxy_urls, config_proxy_url, urlopen_auto
@@ -414,6 +414,41 @@ def fetch_model_count(cookie_dir: str, phone: str, network_config: dict | None =
         "enabled": len(enabled_models),
         "disabled": len(models) - len(enabled_models),
     }
+
+
+def api_sign_in(
+    cookie_dir: str,
+    phone: str,
+    config_path: str,
+    logger,
+    timeout: int = 30,
+) -> tuple[bool, str, bool]:
+    from imyai_proxy import API_BASE_URL, ImyaiClient
+
+    if not read_saved_cookie_header(cookie_dir, phone):
+        raise RuntimeError(f"run signin.py --login-only {phone} first")
+
+    client = ImyaiClient(Path(config_path), phone=phone, timeout=timeout)
+    log = client.request_json(f"{API_BASE_URL}/signin/signinLog")
+    today = date.today().strftime("%Y-%m-%d")
+    rows = log.get("data") if isinstance(log, dict) else []
+    if isinstance(rows, list):
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if row.get("signInDate") == today and row.get("isSigned") not in {False, 0, None}:
+                logger.info("    API sign-in: already signed today")
+                return True, "already signed today", True
+
+    result = client.request_json(
+        f"{API_BASE_URL}/signin/sign",
+        method="POST",
+        data={},
+        encrypted=True,
+    )
+    if result.get("code") == 200 and result.get("success") is True:
+        return True, str(result.get("data") or "Sign in successful."), False
+    return False, str(result.get("message") or "unknown"), False
 
 
 def select_playwright_proxy(config: dict) -> dict | None:
@@ -886,6 +921,7 @@ def parse_args():
     parser.add_argument("--no-headless", dest="headless", action="store_false", help="Show browser")
     parser.add_argument("--no-cleanup", action="store_true", help="Skip deleting old screenshots")
     parser.add_argument("--login-only", action="store_true", help="Stop after successful login and skip check-in")
+    parser.add_argument("--api-only", action="store_true", help="Sign in via saved cookies and API without opening a browser")
     parser.add_argument("--model-count", action="store_true", help="Print supported chat model counts after login")
     parser.add_argument("--skip-success-today", action="store_true", help="Skip accounts already signed in today")
     parser.add_argument("--retries", "-r", type=int, default=3, help="Number of retries for failed sign-ins (default: 3)")
@@ -947,7 +983,7 @@ async def main():
         accounts[0]["password"] = args.password
 
     for acc in accounts:
-        if not acc["password"]:
+        if not args.api_only and not acc["password"]:
             logger.error(f"No password for {acc['phone']}. Use --set-password")
             return
 
@@ -986,6 +1022,64 @@ async def main():
             streak = r.get("streakDays")
             streak_text = f" streakDays={streak}" if streak is not None else ""
             logger.info(f"  {r['account']}: OK{suffix}{streak_text}")
+        return
+
+    if args.api_only:
+        results = list(skipped_results)
+        for account in accounts:
+            phone = account["phone"]
+            username = account.get("username") or phone[-4:]
+            logger.info(f"--- Account: {phone} ---")
+            try:
+                if not read_saved_cookie_header(paths["cookie_dir"], phone):
+                    logger.error(f"    run signin.py --login-only {phone} first")
+                    results.append({"account": phone, "success": False, "skipped": False})
+                    continue
+                success, message, already_signed_today = api_sign_in(
+                    paths["cookie_dir"],
+                    phone,
+                    config_path,
+                    logger,
+                )
+                logger.info(f"    {message}")
+                record_history(paths["history_file"], phone, username, success, "")
+                update_signin_state(
+                    paths,
+                    phone=phone,
+                    username=username,
+                    success=success,
+                    screenshot="",
+                    streak_days=None,
+                )
+                results.append(
+                    {
+                        "account": phone,
+                        "success": success,
+                        "skipped": False,
+                        "alreadySignedToday": already_signed_today,
+                    }
+                )
+            except Exception as exc:
+                logger.error(f"    {exc}")
+                record_history(paths["history_file"], phone, username, False, "")
+                update_signin_state(
+                    paths,
+                    phone=phone,
+                    username=username,
+                    success=False,
+                    screenshot="",
+                    streak_days=None,
+                )
+                results.append({"account": phone, "success": False, "skipped": False})
+
+        logger.info("")
+        logger.info("=== RESULTS ===")
+        for r in results:
+            suffix = " SKIPPED" if r.get("skipped") else ""
+            already = " already signed today" if r.get("alreadySignedToday") else ""
+            logger.info(f"  {r['account']}: {'OK' if r['success'] else 'FAIL'}{suffix}{already}")
+        if any(not item["success"] for item in results):
+            raise SystemExit(1)
         return
 
     settings = config["settings"]

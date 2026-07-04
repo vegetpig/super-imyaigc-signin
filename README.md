@@ -179,6 +179,12 @@ python ".\scripts\signin.py" --set-password THIRD_PHONE "<密码>"
 - `pre-signin-*.png`：签到前页面。
 - `post-signin-*.png`：签到后页面或结果弹窗。
 
+签到完成后还会在日志里输出连续签到天数：
+
+```text
+Consecutive sign-in days: 2
+```
+
 ## 聊天模型
 
 列出可用聊天模型：

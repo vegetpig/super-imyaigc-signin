@@ -640,6 +640,18 @@ async def today_is_signed_in(page) -> bool:
     )
 
 
+async def extract_streak_days(page) -> int | None:
+    text = await page.evaluate("document.body ? document.body.innerText || '' : ''")
+    for pattern in (
+        r"已连续签到\s*(\d+)\s*天",
+        r"连续签到\s*(\d+)\s*天",
+    ):
+        match = re.search(pattern, text)
+        if match:
+            return int(match.group(1))
+    return None
+
+
 async def process_account(browser, account, config, logger, login_only=False):
     import datetime
     phone = account["phone"]
@@ -755,6 +767,14 @@ async def process_account(browser, account, config, logger, login_only=False):
             success = False
             logger.warning(f"    Strict confirmation check failed: {e}")
 
+        try:
+            streak_days = await extract_streak_days(page)
+            if streak_days is not None:
+                logger.info(f"    Consecutive sign-in days: {streak_days}")
+            else:
+                logger.warning("    Consecutive sign-in days: unavailable")
+        except Exception as e:
+            logger.warning(f"    Consecutive sign-in days check failed: {e}")
 
         record_history(paths["history_file"], phone, username, success, screenshot_path)
         return success

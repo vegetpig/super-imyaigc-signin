@@ -466,6 +466,7 @@ async def do_login(page, account, logger):
 
 
 async def do_checkin(page, logger):
+    await dismiss_blocking_overlays(page, logger)
     avatar = page.locator('.avatar-container').first
     random_delay(0.5, 1.0)
     await human_move_and_click(page, avatar, logger)
@@ -487,6 +488,80 @@ async def do_checkin(page, logger):
     except Exception as e:
         logger.warning(f"    Failed to click today sign-in button: {e}")
     await asyncio.sleep(random.uniform(1.0, 2.0))
+
+
+async def dismiss_blocking_overlays(page, logger):
+    """Advance or close product tours that block clicks on the page."""
+    for _ in range(8):
+        clicked = False
+        for selector in (
+            'button:has-text("Skip")',
+            'button:has-text("Done")',
+            'button:has-text("Next")',
+            'button:has-text("跳过")',
+            'button:has-text("完成")',
+            'button:has-text("下一步")',
+        ):
+            try:
+                locator = page.locator(selector).first
+                if await locator.is_visible(timeout=600):
+                    await human_move_and_click(page, locator, logger)
+                    logger.info(f"    Dismissed blocking overlay via {selector}")
+                    await asyncio.sleep(random.uniform(0.4, 0.8))
+                    clicked = True
+                    break
+            except Exception:
+                pass
+        if not clicked:
+            break
+    try:
+        await page.keyboard.press("Escape")
+        await asyncio.sleep(0.3)
+    except Exception:
+        pass
+
+
+async def save_page_screenshot(page, screenshot_dir: str, prefix: str, username: str, logger) -> str:
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    screenshot_path = os.path.join(screenshot_dir, f"{prefix}-{username}-{timestamp}.png")
+    try:
+        random_delay(0.3, 0.5)
+        await page.screenshot(path=screenshot_path, full_page=True)
+        logger.info(f"    Screenshot: {screenshot_path}")
+        return screenshot_path
+    except Exception as e:
+        logger.error(f"    Screenshot failed: {e}")
+        return ""
+
+
+async def today_is_signed_in(page) -> bool:
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    return await page.evaluate(
+        """(today) => {
+            const bodyText = document.body ? document.body.innerText || '' : '';
+            if (bodyText.includes('今日已成功签到')) return true;
+
+            const cell = document.querySelector(`div.n-calendar-date__date[title="${today}"]`);
+            if (!cell) return false;
+
+            const dateRoot = cell.closest('.n-calendar-date') ||
+                cell.closest('[class*="calendar-date"]') ||
+                cell.parentElement;
+            if (!dateRoot) return false;
+
+            const signedIcon = dateRoot.querySelector(
+                'img.sign-in-signed-icon, img[alt="已签到"], img[alt*="签到"]'
+            );
+            if (signedIcon) return true;
+
+            const text = dateRoot.innerText || '';
+            if (text.includes('已签到')) return true;
+
+            const gridCell = cell.closest('[role="gridcell"], td, .n-calendar-cell');
+            return !!gridCell && (gridCell.innerText || '').includes('已签到');
+        }""",
+        today_str,
+    )
 
 
 async def process_account(browser, account, config, logger, login_only=False):
@@ -550,15 +625,9 @@ async def process_account(browser, account, config, logger, login_only=False):
 
         logger.info(f"    Username: {username}")
 
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        screenshot_path = os.path.join(paths["screenshot_dir"], f"signin-{username}-{timestamp}.png")
-        try:
-            random_delay(0.3, 0.5)
-            await page.screenshot(path=screenshot_path, full_page=True)
-            logger.info(f"    Screenshot: {screenshot_path}")
-        except Exception as e:
-            logger.error(f"    Screenshot failed: {e}")
-            screenshot_path = ""
+        screenshot_path = await save_page_screenshot(
+            page, paths["screenshot_dir"], "pre-signin", username, logger
+        )
 
         if login_only:
             logger.info("    Login-only mode: skipping check-in")
@@ -569,6 +638,12 @@ async def process_account(browser, account, config, logger, login_only=False):
             await safe_call(do_checkin, page, logger, retries=settings["max_retries"], delay=settings["retry_delay"])
         except Exception as e:
             logger.warning(f"    Check-in failed: {e}")
+
+        post_screenshot_path = await save_page_screenshot(
+            page, paths["screenshot_dir"], "post-signin", username, logger
+        )
+        if post_screenshot_path:
+            screenshot_path = post_screenshot_path
 
         success = False
         try:
@@ -590,6 +665,19 @@ async def process_account(browser, account, config, logger, login_only=False):
                 logger.warning("    No sign-in icon found on page")
         except Exception as e:
             logger.warning(f'    Confirmation check failed: {e}')
+
+        try:
+            strict_success = await today_is_signed_in(page)
+            if success and not strict_success:
+                logger.warning("    Previous broad check was ignored: today's cell is not signed in")
+            success = strict_success
+            if success:
+                logger.info("    Strict confirmation passed for today's calendar cell")
+            else:
+                logger.warning("    Strict confirmation failed for today's calendar cell")
+        except Exception as e:
+            success = False
+            logger.warning(f"    Strict confirmation check failed: {e}")
 
 
         record_history(paths["history_file"], phone, username, success, screenshot_path)

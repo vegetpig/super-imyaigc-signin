@@ -1,13 +1,17 @@
 ﻿---
-name: 浣跨敤IMYAI
-description: "浣跨敤IMYAI. Let Codex App call IMYAI official chat and image models by human-readable model name while Codex App remains the orchestrator and tool executor. Use when the user says 浣跨敤IMYAI, asks Codex App to use an IMYAI model for later replies, names an IMYAI model such as Claude Opus/Sonnet, Qwen, Gemini, Ava, GPT Image, Nano Banana, or asks for IMYAI image generation, login, JWT verification, model discovery, session mode, or IMYAI-first repair."
+name: 使用IMYAI
+description: "使用IMYAI. Let Codex App call IMYAI official chat and image models by human-readable model name while Codex App remains the orchestrator and tool executor. Use when the user says 使用IMYAI, asks Codex App to use an IMYAI model for later replies, names an IMYAI model such as Claude Opus/Sonnet, Qwen, Gemini, Ava, GPT Image, Nano Banana, or asks for IMYAI image generation, login, JWT verification, model discovery, session mode, or IMYAI-first repair. Prefer bundled scripts for IMYAI login and model actions; do not default to Codex in-app browser / IAB / browser sidebar."
 ---
 
-# 浣跨敤IMYAI
+# 使用IMYAI
 
 This skill is for Codex App plus IMYAI. Codex App remains the active assistant, planner, tool caller, file editor, command runner, and test executor. IMYAI is called through the bundled scripts for official model chat output or official image generation output.
 
-Do not present this as Codex CLI provider integration. Do not change `C:\Users\18511\.codex\config.toml` or switch Codex App model providers unless the user explicitly asks for that separate provider setup.
+Run commands from the skill root with relative paths such as `python scripts/signin.py`. Do not hard-code `C:\Users\...` paths in prompts, docs, or examples.
+
+Prefer the bundled scripts for IMYAI login, JWT refresh, chat, and image generation. Do not open Codex in-app browser / IAB / browser sidebar for IMYAI unless the user explicitly asks for interactive browser control. If an interactive browser is unavoidable, use a visible system Chrome window only.
+
+Do not present this as Codex CLI provider integration. Do not change the user's Codex `config.toml` or switch Codex App model providers unless the user explicitly asks for that separate provider setup.
 
 ## Login and session
 
@@ -21,17 +25,17 @@ Network behavior is automatic. The scripts try the configured proxy first when `
 
 Playwright login behavior: `signin.py` uses a direct browser connection by default. It uses a proxy only when `config.json` has `"proxy.enabled": true`; set `"proxy.auto_detect": true` only when the local Clash/Mihomo mixed port is known to work as an HTTP proxy. This avoids accidentally treating unrelated open localhost ports as browser proxies.
 
-If API calls return 401 and automatic login refresh fails, retry with a visible browser:
+If API calls return 401 and automatic login refresh fails, retry with a visible system browser through the bundled Playwright flow:
 
 ```bash
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\signin.py" --phone YOUR_PHONE --no-headless --login-only
+python scripts/signin.py --phone YOUR_PHONE --no-headless --login-only
 ```
 
 ```bash
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\signin.py" --phone YOUR_PHONE --password <PASSWORD> --login-only
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\signin.py" --phone YOUR_PHONE --password <PASSWORD> --model-count
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\signin.py" --retries 1
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\signin.py" --retries 1 --no-cleanup --skip-success-today
+python scripts/signin.py --phone YOUR_PHONE --password <PASSWORD> --login-only
+python scripts/signin.py --phone YOUR_PHONE --password <PASSWORD> --model-count
+python scripts/signin.py --retries 1
+python scripts/signin.py --retries 1 --no-cleanup --skip-success-today
 ```
 
 Saved cookies live in the `cookie_dir` configured by `scripts/config.json`.
@@ -46,16 +50,16 @@ When the user explicitly asks an IMYAI model to help complete a task, do not use
 
 Use `--no-official-history` only when the message is not meant for IMYAI task work, for example: pure Codex App coordination with the user, local file inspection, command execution, screenshot/render checks, syntax/test runs, status explanations, or when the user explicitly says not to record/send the IMYAI content. Codex App tool activity itself never goes to IMYAI unless Codex App deliberately summarizes it and sends that summary as an IMYAI prompt.
 
-## IMYAI-Agent 全能模型 (可选, 默认不用)
+## IMYAI-Agent 全能模型 (可选，默认不用)
 
-IMYAI 有一个服务端 Agent 模型 (modelTypeId=228, IMYAI-Agent-全能模型), 自动联网 + 绘图 + 多步编排. 消耗独立的 agentCount 积分, 不动普通/高级/绘图池.
+IMYAI 有一个服务端 Agent 模型 (modelTypeId=228, IMYAI-Agent-全能模型)，自动联网 + 绘图 + 多步编排。它消耗独立的 `agentCount` 积分，不占普通/高级/绘图积分。
 
 只在以下场景才用:
 
 - 用户明确说 "用 Agent" / "使用全能模型" / "跑一个复杂多步任务"
-- 单次问答用普通/高级模型明显不够, 需要模型自己规划+搜索+画图
+- 单次问答用普通/高级模型明显不够，需要模型自己规划、搜索、画图
 
-默认不启用. 普通问答一律走 `imyai_chat.py`, 不要因为看着复杂就切 agent.
+默认不启用。普通问答一律走 `imyai_chat.py`，不要因为看起来复杂就切 agent。
 
 命令:
 
@@ -63,27 +67,27 @@ IMYAI 有一个服务端 Agent 模型 (modelTypeId=228, IMYAI-Agent-全能模型
 python scripts/imyai_agent.py --phone <phone> --task "任务描述" --json
 ```
 
-余额报告需额外加 Agent 积分.
+余额报告需额外包含 Agent 积分。
 
 ## IMYAI session mode in Codex App
 
 When the user asks to use IMYAI as the main chat model for later messages, use `--session auto`. This stores the selected model, official group id, and recent local conversation history for the current Codex workspace.
 
 ```bash
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --session auto --set-session-model "Qwen 3.6 flash" --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --session auto --prompt "Remember the codeword: bridge-726. Reply only: ok" --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --session auto --prompt "What codeword did I ask you to remember?" --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --session auto --set-session-model "Qwen 3.6 flash" --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --session auto --prompt "Remember the codeword: bridge-726. Reply only: ok" --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --session auto --prompt "What codeword did I ask you to remember?" --json
 ```
 
 Codex App orchestration rules:
 
-1. If the user says `浣跨敤IMYAI锛屽悗闈㈤兘鐢?<model name>` or similar, Codex App should first run `--session auto --set-session-model "<model name>"`.
+1. If the user says `使用IMYAI，后面都用 <model name>` or similar, Codex App should first run `--session auto --set-session-model "<model name>"`.
 2. For ordinary follow-up messages in that IMYAI mode, Codex App should run `imyai_chat.py --session auto --prompt ... --json` and use the IMYAI `text` as the primary answer.
 3. If the user asks for tool work, Codex App should execute the tools itself, then either summarize the tool result directly or pass the relevant tool result back through `imyai_chat.py --session auto --prompt ... --json`.
 4. If the user wants to stop or reset IMYAI mode, run `--session auto --clear-session --json`.
 5. If the user names an IMYAI model for a specific task but does not ask for ongoing IMYAI chat mode, start or reuse an official group for that task and keep all IMYAI design/code/repair prompts for that task in the same group. Do not send pure Codex App coordination, local command output, screenshots, or status chatter unless it is intentionally summarized as context for the IMYAI model.
 6. If the user asks multiple IMYAI models to work on the same task, use one official task group and call each selected model with the same `--group-id`. Codex App assigns roles, compares outputs, applies the chosen result locally, and sends repair/review prompts back to the relevant model in that same group.
-7. When IMYAI participates in completing a task, the final Codex App response must report IMYAI point usage with both fields: `鏅€氱Н鍒哷 and `楂樼骇绉垎`. If exact usage is unavailable from the API or balance snapshots, write `鏃犳硶缁熻` for that field rather than estimating.
+7. When IMYAI participates in completing a task, the final Codex App response must report IMYAI point usage with both fields: `普通积分` and `高级积分`. If exact usage is unavailable from the API or balance snapshots, write `无法统计` for that field rather than estimating.
 
 This does not replace the Codex App model provider. Codex App remains the orchestrator and tool executor; IMYAI is the preferred chat/reasoning source while the session is active.
 
@@ -96,23 +100,23 @@ Default behavior:
 Common commands:
 
 ```bash
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --search-model claude
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --list-models-compact
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Claude Sonnet 4.6" --prompt "Reply with one short paragraph about RAG evaluation." --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Qwen 3.6 flash" --prompt "Reply exactly: ok" --no-official-history --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Claude Opus 4.8" --prompt "Reply exactly: ok" --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Qwen 3.6 flash" --prompt "Reply exactly: ok" --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Ava" --prompt-file .\work\prompt.txt --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Claude Sonnet 4.6" --group-id 1211383 --prompt "Continue the existing official conversation." --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --session auto --prompt "Continue the active Codex App IMYAI session." --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --search-model claude
+python scripts/imyai_chat.py --phone YOUR_PHONE --list-models-compact
+python scripts/imyai_chat.py --phone YOUR_PHONE --model "Claude Sonnet 4.6" --prompt "Reply with one short paragraph about RAG evaluation." --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --model "Qwen 3.6 flash" --prompt "Reply exactly: ok" --no-official-history --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --model "Claude Opus 4.8" --prompt "Reply exactly: ok" --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --model "Qwen 3.6 flash" --prompt "Reply exactly: ok" --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --model "Ava" --prompt-file .\work\prompt.txt --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --model "Claude Sonnet 4.6" --group-id 1211383 --prompt "Continue the existing official conversation." --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --session auto --prompt "Continue the active Codex App IMYAI session." --json
 ```
 
 Multi-model task example:
 
 ```bash
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Gemini-3.5-flash" --prompt "Role: UI designer. Propose the design direction for this task." --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Claude Opus 4.7" --group-id <groupId from previous JSON official.groupId> --prompt "Role: senior engineer. Implement or critique the chosen design for the same task." --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Qwen 3.6 flash" --group-id <same groupId> --prompt "Role: reviewer. Check the proposed patch for bugs and edge cases." --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --model "Gemini-3.5-flash" --prompt "Role: UI designer. Propose the design direction for this task." --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --model "Claude Opus 4.7" --group-id <groupId from previous JSON official.groupId> --prompt "Role: senior engineer. Implement or critique the chosen design for the same task." --json
+python scripts/imyai_chat.py --phone YOUR_PHONE --model "Qwen 3.6 flash" --group-id <same groupId> --prompt "Role: reviewer. Check the proposed patch for bugs and edge cases." --json
 ```
 
 Model selection:
@@ -130,10 +134,10 @@ Model selection:
 
 Point usage reporting:
 
-- Every final answer after IMYAI-assisted task work must include `鏅€氱Н鍒嗭細...` and `楂樼骇绉垎锛?..`.
+- Every final answer after IMYAI-assisted task work must include `普通积分：...` and `高级积分：...`.
 - 每次 IMYAI 参与任务后，运行 `python scripts/imyai_balance.py --phone <phone> --json` 获取真实余额并汇报：普通积分、高级积分、超级积分、绘图积分、Agent 积分。
 - If a reliable point balance/usage API is available, record balances before and after the IMYAI task and report the difference.
-- If `scripts/imyai_balance.py` cannot provide usable data and the response payload or balance API does not expose point usage, report `鏅€氱Н鍒嗭細鏃犳硶缁熻` and/or `楂樼骇绉垎锛氭棤娉曠粺璁.
+- If `scripts/imyai_balance.py` cannot provide usable data and the response payload or balance API does not expose point usage, report `普通积分：无法统计` and/or `高级积分：无法统计`.
 - Do not infer point usage from token counts, model names, or number of calls unless an official IMYAI API explicitly defines that conversion.
 - Pure Codex App work that did not call IMYAI does not need IMYAI point usage reporting.
 
@@ -146,14 +150,14 @@ IMYAI draw prompts must stay within the official 1000-character limit. Before ca
 Common commands:
 
 ```bash
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_image.py" --phone YOUR_PHONE --list-models-compact
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_image.py" --phone YOUR_PHONE --search-model "GPT Image"
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_image.py" --phone YOUR_PHONE --model "GPT Image 2" --manifest
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_image.py" --phone YOUR_PHONE --model auto --prompt-file .\work\image_prompt.txt --resolution 1K --ratio 9:16 --count 2 --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_image.py" --phone YOUR_PHONE --model "GPT Image 2" --prompt "A precise product-style prompt written by Codex App." --resolution 1K --ratio 1:1 --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_image.py" --phone YOUR_PHONE --model "Nano Banana 2" --prompt "Use the uploaded image as style reference." --reference-image "D:\path\to\reference.png" --resolution 1K --ratio 9:16 --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_image.py" --phone YOUR_PHONE --model "GPT Image 2" --poll-task-id 1307618 --json
-python "C:\Users\18511\.codex\skills\super-imyaigc-signin\scripts\imyai_image.py" --phone YOUR_PHONE --model "GPT Image 2" --poll-task-id 1307694 --json
+python scripts/imyai_image.py --phone YOUR_PHONE --list-models-compact
+python scripts/imyai_image.py --phone YOUR_PHONE --search-model "GPT Image"
+python scripts/imyai_image.py --phone YOUR_PHONE --model "GPT Image 2" --manifest
+python scripts/imyai_image.py --phone YOUR_PHONE --model auto --prompt-file .\work\image_prompt.txt --resolution 1K --ratio 9:16 --count 2 --json
+python scripts/imyai_image.py --phone YOUR_PHONE --model "GPT Image 2" --prompt "A precise product-style prompt written by Codex App." --resolution 1K --ratio 1:1 --json
+python scripts/imyai_image.py --phone YOUR_PHONE --model "Nano Banana 2" --prompt "Use the uploaded image as style reference." --reference-image "D:\path\to\reference.png" --resolution 1K --ratio 9:16 --json
+python scripts/imyai_image.py --phone YOUR_PHONE --model "GPT Image 2" --poll-task-id 1307618 --json
+python scripts/imyai_image.py --phone YOUR_PHONE --model "GPT Image 2" --poll-task-id 1307694 --json
 ```
 
 `--reference-image` accepts either an HTTP(S) URL or a local `png`, `jpg`, `jpeg`, or `webp` file path. Local files are automatically uploaded through the official IMYAI/COS upload flow, then the returned public URL is sent to the draw runtime input. The JSON result includes `referenceImages` and `uploadedReferenceImages` for debugging.
@@ -182,10 +186,10 @@ When the user asks for an IMYAI model result inside a Codex conversation:
 2. Select the requested model by name with `--model`; if ambiguous, run `--search-model` or `--list-models-compact` and pick a human-readable model name.
 3. Send the user's intended prompt through `imyai_chat.py`.
 4. Treat the returned text as IMYAI model output.
-5. If the task needs file edits, command execution, tests, local inspection, screenshots, or browser/tool calls, Codex App performs those actions itself.
+5. If the task needs file edits, command execution, tests, local inspection, screenshots, or browser/tool calls, Codex App performs those actions itself. For IMYAI web interactions, prefer the bundled scripts; if a manual browser step is still required, use Chrome only and do not use Codex in-app browser / IAB.
 6. If execution or tests fail, Codex App can send the error summary back to the same IMYAI model for repair, then Codex App applies and verifies the repaired output.
 
-For example, if the user says `浣跨敤IMYAI锛岀敤 Claude Opus 4.7 鍐欒繖娈典唬鐮乣, Codex App asks IMYAI's matching Claude Opus model for the code, then Codex App applies the patch, runs tests, and only re-asks IMYAI when the generated code needs repair.
+For example, if the user says `使用IMYAI，用 Claude Opus 4.7 写这段代码`, Codex App asks IMYAI's matching Claude Opus model for the code, then Codex App applies the patch, runs tests, and only re-asks IMYAI when the generated code needs repair.
 
 Real end-to-end testing showed the most reliable coding pattern:
 
@@ -227,7 +231,7 @@ Verify in this order after edits:
 16. For full image verification, submit one low-frequency 1K task, poll to SUCCESS, download the final image, and inspect the saved image file.
 17. `quick_validate.py` reports the skill is valid when available.
 18. `python scripts/imyai_balance.py --phone SECOND_PHONE --json` returns a `balance` object.
-19. `python scripts/imyai_agent.py --phone SECOND_PHONE --task "回复恰好 ok" --json` returns a `text` field (会烧 agent 积分, 可选).
+19. `python scripts/imyai_agent.py --phone SECOND_PHONE --task "回复恰好 ok" --json` returns a `text` field (会烧 agent 积分，可选).
 
 ## Notes
 

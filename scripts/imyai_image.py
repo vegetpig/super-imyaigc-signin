@@ -686,9 +686,12 @@ def unique_path(path: Path) -> Path:
 
 def output_dir(default_dir: str | None) -> Path:
     if default_dir:
-        return Path(default_dir)
-    workspace_output = Path(r"C:\Users\18511\Documents\Codex\2026-06-26\c-users-18511-codex-skills-super-2\outputs")
-    return workspace_output / "imyai-images"
+        return Path(default_dir).expanduser()
+    cwd = Path.cwd().resolve()
+    for candidate in (cwd, *cwd.parents):
+        if (candidate / "outputs").exists() or (candidate / "work").exists():
+            return candidate / "outputs" / "imyai-images"
+    return Path(__file__).resolve().parent.parent / "outputs" / "imyai-images"
 
 
 def download_url(

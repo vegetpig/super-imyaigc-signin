@@ -50,6 +50,43 @@ def env_proxy_urls() -> list[str]:
     return dedupe(values)
 
 
+def windows_proxy_urls() -> list[str]:
+    if os.name != "nt":
+        return []
+    try:
+        import winreg
+    except ImportError:
+        return []
+
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+        ) as key:
+            enabled = int(winreg.QueryValueEx(key, "ProxyEnable")[0] or 0)
+            raw_value = str(winreg.QueryValueEx(key, "ProxyServer")[0] or "").strip()
+    except OSError:
+        return []
+
+    if not enabled or not raw_value:
+        return []
+
+    values: list[str] = []
+    if "=" in raw_value:
+        for part in raw_value.split(";"):
+            name, _, value = part.partition("=")
+            if name.lower() not in ("http", "https"):
+                continue
+            normalized = normalize_proxy_url(value)
+            if normalized:
+                values.append(normalized)
+    else:
+        normalized = normalize_proxy_url(raw_value)
+        if normalized:
+            values.append(normalized)
+    return dedupe(values)
+
+
 def _existing_yaml_files() -> list[Path]:
     roots = [
         Path(os.environ.get("APPDATA", "")) / "io.github.clash-verge-rev.clash-verge-rev",
@@ -126,6 +163,7 @@ def network_routes(config: dict[str, Any] | None = None) -> list[tuple[str, str]
         routes.append((f"config proxy {configured}", configured))
     routes.append(("direct", ""))
     routes.extend((f"env proxy {url}", url) for url in env_proxy_urls())
+    routes.extend((f"system proxy {url}", url) for url in windows_proxy_urls())
     routes.extend((f"auto proxy {url}", url) for url in auto_proxy_urls())
 
     seen: set[str] = set()
@@ -174,4 +212,3 @@ def urlopen_auto(
             _debug(f"failed {label}: {exc}")
             continue
     raise urllib.error.URLError("; ".join(errors) or "all IMYAI network routes failed")
-

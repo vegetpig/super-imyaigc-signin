@@ -1,0 +1,22 @@
+{
+    "accounts": [],
+    "proxy": {
+        "enabled": false,
+        "auto_detect": false,
+        "server": "",
+        "username": "",
+        "password": ""
+    },
+    "paths": {
+        "screenshot_dir": ".local/screenshots",
+        "cookie_dir": ".local/cookies",
+        "history_file": ".local/history.log",
+        "log_file": ".local/signin.log"
+    },
+    "settings": {
+        "max_retries": 3,
+        "retry_delay": 2,
+        "headless": true,
+        "timeout": 15000
+    }
+}

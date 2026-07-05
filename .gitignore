@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.local/
+scripts/config.json
+scripts/.secret_key
+scripts/sessions/

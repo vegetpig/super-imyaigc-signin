@@ -1,6 +1,6 @@
 # super-imyaigc-signin
 
-私有 Codex Skill 仓库，用于在 Codex App 中调用 IMYAI 官方聊天模型、绘图模型，并维护登录、签到、会话、模型发现和多机同步开发流程。
+私有 Codex Skill 仓库，用于在 Codex App 中调用 IMYAI 官方聊天模型、绘图模型，并维护登录、签到、会话、模型发现和多机协作流程。
 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB)
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightgrey)
@@ -23,7 +23,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 需要安装后立刻验证登录和模型列表：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\install.ps1 -Verify
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Verify -Phone YOUR_PHONE
 ```
 
 也可以从 GitHub Releases 下载压缩包，解压后运行：
@@ -74,14 +74,15 @@ sequenceDiagram
     participant GitHub as 私有 GitHub 仓库
 
     Dev->>GitHub: clone / pull
-    Dev->>Skill: 安装 Python 依赖
+    Dev->>Skill: install.ps1
+    Skill->>Skill: 从 config.template.json 引导本地 config.json
     Dev->>Skill: signin.py --login-only
     Skill->>API: 登录并保存 Cookie
     Dev->>Skill: imyai_chat.py / imyai_image.py
     Skill->>API: 调用官方模型
     API-->>Skill: 返回文本 / 图片任务
     Skill-->>Dev: 输出结果或下载图片
-    Dev->>GitHub: commit / push 优化后的 Skill
+    Dev->>GitHub: commit / push 脚本与文档
 ```
 
 ## 仓库结构
@@ -98,17 +99,21 @@ sequenceDiagram
 ├── agents/
 │   └── openai.yaml
 └── scripts/
-    ├── .secret_key
-    ├── config.json
+    ├── config.template.json
     ├── signin.py
     ├── imyai_chat.py
     ├── imyai_image.py
     ├── imyai_network.py
     ├── imyai_proxy.py
-    └── sessions/
-        ├── codex-0a41a305c964.json
-        └── codex-b39c4de18152.json
+    └── imyai_config.py
 ```
+
+本地运行时文件不会进入 Git：
+
+- `scripts/config.json`
+- `scripts/.secret_key`
+- `scripts/sessions/*.json`
+- `.local/`
 
 ## 新电脑初始化
 
@@ -127,7 +132,26 @@ python -m pip install -r requirements.txt
 python -m playwright install chromium
 ```
 
-如果新电脑已有 Chrome 或 Edge，`signin.py` 会优先尝试系统浏览器；安装 Playwright Chromium 是通用兜底方案。
+首次安装会自动从 `scripts/config.template.json` 生成本地 `scripts/config.json`。你需要补充自己的账号信息，再进行真实登录验证。
+
+最小示例：
+
+```json
+{
+  "accounts": [
+    {
+      "phone": "YOUR_PHONE",
+      "password": ""
+    }
+  ]
+}
+```
+
+密码建议通过命令写入：
+
+```powershell
+python ".\scripts\signin.py" --set-password YOUR_PHONE "<PASSWORD>"
+```
 
 ## 登录与验证
 
@@ -151,7 +175,7 @@ python ".\scripts\imyai_chat.py" --phone YOUR_PHONE --model "Qwen 3.6 flash" --p
 
 ## 多账号签到
 
-`scripts/config.json` 的 `accounts` 数组支持多个账号。当前已配置 3 个账号，密码通过 `scripts/.secret_key` 加密保存。
+`scripts/config.template.json` 只提供模板。真实账号放在本地 `scripts/config.json` 的 `accounts` 数组里，密码通过本地 `scripts/.secret_key` 加密保存。
 
 只签到单个账号：
 
@@ -178,8 +202,8 @@ python ".\scripts\signin.py" --retries 1 --no-cleanup --skip-success-today
 更新或新增账号密码：
 
 ```powershell
-python ".\scripts\signin.py" --set-password SECOND_PHONE "<密码>"
-python ".\scripts\signin.py" --set-password THIRD_PHONE "<密码>"
+python ".\scripts\signin.py" --set-password YOUR_PHONE "<PASSWORD>"
+python ".\scripts\signin.py" --set-password SECOND_PHONE "<PASSWORD>"
 ```
 
 签到脚本会为每个账号保存两张截图：
@@ -253,11 +277,11 @@ python ".\scripts\imyai_image.py" --phone YOUR_PHONE --model "GPT Image 2" --pol
 | --- | --- | --- |
 | `SKILL.md` | 是 | Codex Skill 主说明 |
 | `scripts/*.py` | 是 | 核心脚本 |
-| `scripts/config.json` | 是 | 账号、路径、代理等配置，当前按私有仓库同步 |
-| `scripts/.secret_key` | 是 | 用于解密配置里的加密密码，多机复用时需要同步 |
-| `scripts/sessions/*.json` | 是 | Codex 工作区会话状态，可同步调试 |
-| `scripts/__pycache__/` | 否 | Python 运行缓存，不提交 |
-| 截图、日志、Cookie 外部目录 | 否 | 当前配置在 `D:\vide coding\signin-screenshots\...`，不属于仓库目录 |
+| `scripts/config.template.json` | 是 | 新机器引导模板 |
+| `scripts/config.json` | 否 | 本地账号、路径、代理等私有配置 |
+| `scripts/.secret_key` | 否 | 本地密码加密密钥 |
+| `scripts/sessions/*.json` | 否 | 本地 Codex 工作区会话状态 |
+| `.local/` | 否 | Cookie、截图、日志等运行产物 |
 
 推荐协作节奏：
 
@@ -280,13 +304,17 @@ flowchart TD
     Start["发起请求"] --> Config["config.json 配置代理"]
     Config -->|可用| Proxy["使用配置代理"]
     Config -->|不可用| Direct["尝试直连"]
-    Direct -->|失败| Env["尝试环境代理"]
-    Env -->|失败| Local["检测本地 Clash/Mihomo"]
+    Direct -->|失败| Env["尝试环境变量代理"]
+    Env -->|失败| System["尝试 Windows 系统代理"]
+    System -->|失败| Local["检测本地 Clash/Mihomo"]
     Local --> Done["返回结果或错误"]
     Proxy --> Done
     Direct --> Done
     Env --> Done
+    System --> Done
 ```
+
+Playwright 登录在未显式配置代理时，也会优先复用 Windows 系统代理；这能覆盖“浏览器能上网，但脚本直连握手被对端断开”的机器环境。
 
 调试网络路径：
 
@@ -296,6 +324,10 @@ python ".\scripts\imyai_chat.py" --phone YOUR_PHONE --list-models-compact
 ```
 
 ## 常见问题
+
+### `install.ps1 -Verify` 失败
+
+如果报 `No accounts configured`，说明这是一次真实的零安装结果：仓库只会生成模板，不会偷偷复用旧机器上的 Cookie。编辑本地 `scripts/config.json`，写入账号后重试即可。
 
 ### API 返回 401 或登录过期
 
@@ -320,7 +352,7 @@ python ".\scripts\imyai_image.py" --phone YOUR_PHONE --model "GPT Image 2" --pol
 
 ### 新电脑路径不一致
 
-修改 `scripts/config.json` 里的 `paths` 字段，让 `cookie_dir`、`screenshot_dir`、`log_file`、`history_file` 指向新电脑上的实际目录。
+修改本地 `scripts/config.json` 里的 `paths` 字段，让 `cookie_dir`、`screenshot_dir`、`log_file`、`history_file` 指向新电脑上的实际目录。默认模板已经改为仓库内相对路径 `.local/...`，通常不需要再手工改。
 
 ## 发布前检查
 
@@ -336,5 +368,5 @@ python ".\scripts\imyai_image.py" --phone YOUR_PHONE --list-models-compact
 - Codex App 负责本地编排、读写文件、运行命令和测试。
 - IMYAI 负责官方模型回复和官方绘图结果。
 - 小步提交，每次只改一个清晰主题。
-- 账号配置按私有仓库同步；不要把仓库切换为公开仓库。
+- 仓库可以保持私有，但私有仓库不等于可以安全提交账号配置、Cookie、session 或密钥。
 - 运行缓存、临时输出、截图日志不进入 Git。

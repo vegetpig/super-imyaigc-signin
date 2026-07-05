@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from imyai_config import default_config_path
 from imyai_proxy import ImyaiClient
 
 
@@ -24,7 +25,7 @@ AGENT_MODEL_TYPE_ID = 228
 def parse_args() -> argparse.Namespace:
     script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description="Run IMYAI-Agent all-in-one model")
-    parser.add_argument("--config", default=str(script_dir / "config.json"), help="Path to signin skill config.json")
+    parser.add_argument("--config", default=str(default_config_path(script_dir)), help="Path to signin skill config.json")
     parser.add_argument("--phone", default=None, help="Phone number whose saved cookies should be used")
     parser.add_argument("--task", default="", help="Task description for IMYAI-Agent")
     parser.add_argument("--group-id", type=int, default=None, help="Reuse an existing official IMYAI group id")

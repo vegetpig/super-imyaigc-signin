@@ -11,6 +11,7 @@ import urllib.parse
 from pathlib import Path
 from typing import Any
 
+from imyai_config import default_config_path
 from imyai_proxy import API_BASE_URL, ImyaiClient
 
 
@@ -290,7 +291,7 @@ def main() -> None:
     args = parse_args()
     script_dir = Path(__file__).resolve().parent
     try:
-        client = ImyaiClient(script_dir / "config.json", phone=args.phone)
+        client = ImyaiClient(default_config_path(script_dir), phone=args.phone)
         balance = query_balance(client)
         output: dict[str, Any] = {
             "phone": client.phone,

@@ -19,6 +19,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from imyai_config import default_config_path
 from imyai_proxy import ImyaiClient
 from imyai_network import urlopen_auto
 
@@ -723,7 +724,7 @@ def parse_overrides(raw: str) -> dict[str, Any]:
 def parse_args() -> argparse.Namespace:
     script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description="Generate images with IMYAI draw models")
-    parser.add_argument("--config", default=str(script_dir / "config.json"), help="Path to signin skill config.json")
+    parser.add_argument("--config", default=str(default_config_path(script_dir)), help="Path to signin skill config.json")
     parser.add_argument("--phone", default=None, help="Phone number whose saved cookies should be used")
     parser.add_argument("--model", default=AUTO_DRAW_MODEL, help="Draw model/version name, e.g. 'GPT Image 2', or 'auto'")
     parser.add_argument("--prompt", default="", help="Image prompt text. Use '-' to read from stdin")

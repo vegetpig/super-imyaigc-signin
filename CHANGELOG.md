@@ -1,5 +1,21 @@
 # 更新日志
 
+## Unreleased - 2026-07-05
+
+### 修复
+
+- 安装流程改为从 `scripts/config.template.json` 自动引导本地 `scripts/config.json`。
+- 修复 `install.ps1 -Verify` 在外部命令失败后仍然继续显示安装成功的问题。
+- 修复 `signin.py` 在 headless 模式下错误复用系统 Chrome/Edge，导致 Playwright 无法稳定登录的问题。
+- Playwright 登录和 API 网络回退现在会识别 Windows 系统代理，避免脚本与浏览器出网路径不一致。
+- 统一聊天、图片、余额、代理等脚本的配置加载逻辑，支持缺失配置时自动引导模板。
+
+### 安全
+
+- 仓库当前树移除了 `scripts/config.json`、`scripts/.secret_key`、`scripts/sessions/*.json` 等本地敏感运行时文件。
+- `.gitignore` 新增 `.local/`、本地配置、密钥和 session 忽略规则。
+- 文档示例手机号和密码已替换为占位符。
+
 ## v0.1.5 - 2026-07-04
 
 ### 新增
@@ -67,4 +83,3 @@
 - 网络策略：配置代理、直连、环境代理、本地 Clash/Mihomo 检测。
 - 中文 README、安装文档、协作说明。
 - Windows 快速安装脚本 `install.ps1`。
-- 私有仓库多机同步所需的配置文件和 session 文件。

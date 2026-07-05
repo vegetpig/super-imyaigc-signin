@@ -10,7 +10,7 @@
 git pull
 ```
 
-2. 修改脚本、文档或配置。
+2. 修改脚本、文档或模板配置。
 
 3. 至少运行一项验证：
 
@@ -34,22 +34,24 @@ git push
 
 - `SKILL.md`
 - `README.md`
+- `INSTALL.md`
 - `CONTRIBUTING.md`
 - `requirements.txt`
 - `agents/*.yaml`
 - `scripts/*.py`
-- `scripts/config.json`
-- `scripts/.secret_key`
-- `scripts/sessions/*.json`
+- `scripts/config.template.json`
 
 不会同步：
 
+- `scripts/config.json`
+- `scripts/.secret_key`
+- `scripts/sessions/*.json`
+- `.local/`
 - `__pycache__/`
 - `*.pyc`
 - `.pytest_cache/`
 - `.mypy_cache/`
 - `.ruff_cache/`
-- 外部截图、日志、Cookie 目录
 
 ## 修改脚本时的约定
 
@@ -58,9 +60,11 @@ git push
 - 新增网络逻辑时，保持顺序清晰：配置代理、直连、环境代理、本地代理检测。
 - 新增图片生成参数时，优先通过 `--overrides-json` 或显式 CLI 参数暴露。
 - 出现 401 时，优先走 `signin.py --login-only` 刷新登录。
+- 不要把本地账号配置、Cookie、session、截图、日志重新提交进仓库。
 
 ## 文档约定
 
 - 文档默认使用中文。
 - README 中保留 Mermaid 图，方便在 GitHub 页面直接查看流程。
 - 新增常用命令时，同时补充用途说明和最小可复制命令。
+- 示例手机号统一使用 `YOUR_PHONE`、`SECOND_PHONE`、`THIRD_PHONE` 这类占位符。

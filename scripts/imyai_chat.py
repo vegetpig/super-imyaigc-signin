@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from imyai_config import default_config_path
 from imyai_proxy import DEFAULT_MODEL_ID, ImyaiClient
 
 
@@ -262,7 +263,7 @@ def resolve_model_argument(client: ImyaiClient, model_arg: str) -> tuple[int, di
 def parse_args() -> argparse.Namespace:
     script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description="Ask an IMYAI official web model and return its text reply")
-    parser.add_argument("--config", default=str(script_dir / "config.json"), help="Path to signin skill config.json")
+    parser.add_argument("--config", default=str(default_config_path(script_dir)), help="Path to signin skill config.json")
     parser.add_argument("--phone", default=None, help="Phone number whose saved cookies should be used")
     parser.add_argument(
         "--model",

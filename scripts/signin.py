@@ -17,7 +17,8 @@ import time
 from datetime import date, datetime
 from pathlib import Path
 
-from imyai_network import auto_proxy_urls, config_proxy_url, urlopen_auto
+from imyai_network import auto_proxy_urls, config_proxy_url, urlopen_auto, windows_proxy_urls
+from imyai_config import default_config_path, load_config as load_skill_config, save_config as save_skill_config
 
 # --- Password Encryption ---
 try:
@@ -76,17 +77,6 @@ def setup_logging(log_file: str, level=logging.INFO):
     fh.setFormatter(fmt)
     logger.addHandler(fh)
     return logger
-
-
-# --- Config ---
-def load_config(config_path: str) -> dict:
-    with open(config_path, "r", encoding="utf-8-sig") as f:
-        return json.load(f)
-
-
-def save_config(config: dict, config_path: str):
-    with open(config_path, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=4, ensure_ascii=False)
 
 
 # --- Anti-Detection ---
@@ -353,7 +343,7 @@ def build_launch_args(headless: bool) -> dict:
             "--disable-extensions",
         ]
     }
-    browser_path = find_system_browser()
+    browser_path = find_system_browser() if not headless else ""
     if browser_path:
         launch_args["executable_path"] = browser_path
     return launch_args
@@ -453,15 +443,24 @@ def api_sign_in(
 
 def select_playwright_proxy(config: dict) -> dict | None:
     configured = config_proxy_url(config)
+    if configured:
+        proxy = {"server": configured}
+        proxy_config = config.get("proxy") or {}
+        if proxy_config.get("username"):
+            proxy["username"] = proxy_config["username"]
+            proxy["password"] = proxy_config.get("password", "")
+        return proxy
+
+    system_proxy = next(iter(windows_proxy_urls()), "")
+    if system_proxy:
+        return {"server": system_proxy}
+
     proxy_config = config.get("proxy") or {}
     auto_detect = bool(proxy_config.get("auto_detect"))
-    proxy_url = configured or (next(iter(auto_proxy_urls()), "") if auto_detect else "")
+    proxy_url = next(iter(auto_proxy_urls()), "") if auto_detect else ""
     if not proxy_url:
         return None
     proxy = {"server": proxy_url}
-    if configured and proxy_config.get("username"):
-        proxy["username"] = proxy_config["username"]
-        proxy["password"] = proxy_config.get("password", "")
     return proxy
 
 
@@ -931,21 +930,23 @@ def parse_args():
 async def main():
     args = parse_args()
     script_dir = Path(__file__).parent
-    config_path = args.config or str(script_dir / "config.json")
-    config = load_config(config_path)
+    config_path = Path(args.config) if args.config else default_config_path(script_dir)
+    raw_config = load_skill_config(config_path, resolve_paths=False)
+    config = load_skill_config(config_path, resolve_paths=True)
     paths = config["paths"]
     logger = setup_logging(paths["log_file"])
 
     if args.set_password:
         phone, pwd = args.set_password
-        for acc in config["accounts"]:
+        for acc in raw_config.get("accounts", []):
             if acc["phone"] == phone:
                 acc["password"] = encrypt_password(pwd)
-                save_config(config, config_path)
+                save_skill_config(raw_config, config_path)
                 logger.info(f"Password encrypted and saved for {phone}")
                 break
         else:
             logger.error(f"Phone {phone} not found in config")
+            raise SystemExit(1)
         return
 
     if args.history:
@@ -955,37 +956,41 @@ async def main():
     if not args.no_cleanup:
         cleanup_old_screenshots(paths["screenshot_dir"], logger)
 
-    for acc in config["accounts"]:
+    for acc in config.get("accounts", []):
         if acc["password"] and HAS_CRYPTO:
             acc["password"] = decrypt_password(acc["password"])
         elif not acc["password"] and HAS_KEYRING:
             import keyring as kr
             acc["password"] = kr.get_password(SERVICE_NAME, acc["phone"]) or ""
 
-    accounts = config["accounts"]
+    accounts = config.get("accounts", [])
     if args.account:
         idx = args.account - 1
         if 0 <= idx < len(accounts):
             accounts = [accounts[idx]]
         else:
             logger.error(f"Account index {args.account} out of range (1-{len(config['accounts'])})")
-            return
+            raise SystemExit(1)
     elif args.phone:
         accounts = [a for a in accounts if a["phone"] == args.phone]
         if not accounts:
             logger.error(f"Phone {args.phone} not found")
-            return
+            raise SystemExit(1)
+
+    if not accounts:
+        logger.error("No accounts configured. Edit scripts/config.json, then rerun the command.")
+        raise SystemExit(1)
 
     if args.password is not None:
         if len(accounts) != 1:
             logger.error("--password requires exactly one selected account; use --phone or --account")
-            return
+            raise SystemExit(1)
         accounts[0]["password"] = args.password
 
     for acc in accounts:
         if not args.api_only and not acc["password"]:
             logger.error(f"No password for {acc['phone']}. Use --set-password")
-            return
+            raise SystemExit(1)
 
     skipped_results = []
     if args.skip_success_today and not args.login_only and not args.model_count:

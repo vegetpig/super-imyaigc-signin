@@ -27,6 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Iterable
 
+from imyai_config import default_config_path, load_config
 from imyai_network import urlopen_auto
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
@@ -143,7 +144,7 @@ class ImyaiClient:
         auto_refresh_auth: bool = True,
     ):
         self.config_path = config_path
-        self.config = load_json(config_path)
+        self.config = load_config(config_path)
         self.paths = self.config.get("paths", {})
         self.cookie_dir = Path(self.paths.get("cookie_dir", ""))
         self.phone = phone or os.environ.get("IMYAI_PHONE") or self._find_cookie_phone()
@@ -1368,7 +1369,7 @@ class ImyaiProxyHandler(BaseHTTPRequestHandler):
 def parse_args() -> argparse.Namespace:
     script_dir = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description="Run a local OpenAI-compatible proxy for IMYAI chat models")
-    parser.add_argument("--config", default=str(script_dir / "config.json"), help="Path to signin skill config.json")
+    parser.add_argument("--config", default=str(default_config_path(script_dir)), help="Path to signin skill config.json")
     parser.add_argument("--phone", default=None, help="Phone number whose saved cookies should be used")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     parser.add_argument("--port", type=int, default=8788, help="Bind port")
